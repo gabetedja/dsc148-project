@@ -4,3 +4,6 @@ joblib
 pandas
 scikit-learn
 gunicorn
+numpy
+requests
+beautifulsoup4
