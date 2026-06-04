@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Airbnb Revenue Estimator</title>
+<style>
+  body { font-family: Helvetica; font-weight: 600; font-size: 13px; max-width: 600px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 15px; margin-bottom: 24px; }
+  .row { display: flex; gap: 8px; margin-bottom: 6px; align-items: center; }
+  label { width: 180px; flex-shrink: 0; color: #555; }
+  input, select, textarea { flex: 1; font-family: monospace; font-size: 13px; padding: 3px 5px; border: 1px solid #ccc; }
+  textarea { height: 50px; resize: vertical; }
+  button { margin-top: 16px; font-family: monospace; font-size: 13px; padding: 6px 16px; cursor: pointer; }
+  #result { margin-top: 20px; font-size: 18px; font-weight: bold; }
+  #error { margin-top: 12px; color: red; font-size: 12px; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+</style>
+</head>
+<body>
+
+<h1>Airbnb Revenue Estimator</h1>
+
+<div class="row"><label>Airbnb URL (optional)</label><input type="text" id="url" placeholder="https://www.airbnb.com/rooms/..."></div>
+<button onclick="scrapeUrl()">Scrape URL</button>
+<div id="scrape-msg" style="font-size:11px;color:#888;margin-top:4px;"></div>
+
+<hr>
+
+<div class="row"><label>Room type</label>
+  <select id="room_type"><option>Entire home/apt</option><option>Private room</option><option>Shared room</option><option>Hotel room</option></select></div>
+<div class="row"><label>Listing type</label>
+  <select id="listing_type"><option>House</option><option>Apartment</option><option>Condo</option><option>Townhouse</option><option>Loft</option><option>Villa</option><option>Cabin</option><option>Studio</option><option>Other</option></select></div>
+<div class="row"><label>Cancellation policy</label>
+  <select id="cancellation_policy"><option>Flexible</option><option>Moderate</option><option>Strict</option><option>Super Strict</option></select></div>
+<div class="row"><label>Region</label>
+  <select id="region"><option>North America</option><option>Europe</option><option>Asia-Pacific</option><option>Latin America/Caribbean</option></select></div>
+<div class="row"><label>Country</label><input type="text" id="country" value="United States"></div>
+<div class="row"><label>City</label><input type="text" id="city" value="New York"></div>
+<div class="row"><label>Bedrooms</label><input type="number" id="bedrooms" value="2" min="1"></div>
+<div class="row"><label>Beds</label><input type="number" id="beds" value="2" min="1"></div>
+<div class="row"><label>Bathrooms</label><input type="number" id="baths" value="1" min="0.5" step="0.5"></div>
+<div class="row"><label>Max guests</label><input type="number" id="guests" value="4" min="1"></div>
+<div class="row"><label>Min nights</label><input type="number" id="min_nights" value="2" min="1"></div>
+<div class="row"><label>Photos</label><input type="number" id="photos_count" value="20" min="0"></div>
+<div class="row"><label>Cleaning fee $</label><input type="number" id="cleaning_fee" value="80" min="0"></div>
+<div class="row"><label>Extra guest fee $</label><input type="number" id="extra_guest_fee" value="20" min="0"></div>
+<div class="row"><label>Overall rating</label><input type="number" id="rating_overall" value="4.7" min="1" max="5" step="0.1"></div>
+<div class="row"><label>Cleanliness</label><input type="number" id="rating_cleanliness" value="4.8" min="1" max="5" step="0.1"></div>
+<div class="row"><label>Location rating</label><input type="number" id="rating_location" value="4.7" min="1" max="5" step="0.1"></div>
+<div class="row"><label>Value rating</label><input type="number" id="rating_value" value="4.5" min="1" max="5" step="0.1"></div>
+<div class="row"><label>Accuracy rating</label><input type="number" id="rating_accuracy" value="4.7" min="1" max="5" step="0.1"></div>
+<div class="row"><label>Check-in rating</label><input type="number" id="rating_checkin" value="4.8" min="1" max="5" step="0.1"></div>
+<div class="row"><label>Communication</label><input type="number" id="rating_communication" value="4.9" min="1" max="5" step="0.1"></div>
+<div class="row"><label># Reviews</label><input type="number" id="num_reviews" value="50" min="0"></div>
+<div class="row"><label>Amenities (comma list)</label><textarea id="amenities_raw" placeholder="Wifi, Kitchen, Pool, Hot tub, Parking..."></textarea></div>
+<div class="row"><label>Amenity count</label><input type="number" id="amenities_count" value="0" min="0"></div>
+<div class="row"><label>Superhost</label><input type="checkbox" id="superhost" checked style="flex:none"></div>
+<div class="row"><label>Pro managed</label><input type="checkbox" id="professional_management" style="flex:none"></div>
+
+<button onclick="predict()">Estimate →</button>
+
+<div id="result"></div>
+<div id="error"></div>
+
+<script>
+const API_BASE = "https://dsc148-project.onrender.com";
+
+window.addEventListener('load', () => { fetch(API_BASE + '/health').catch(() => {}); });
+
+function getInputs() {
+  const amenitiesRaw = document.getElementById('amenities_raw').value.trim();
+  const amenitiesCount = amenitiesRaw
+    ? amenitiesRaw.split(',').filter(a => a.trim()).length
+    : parseInt(document.getElementById('amenities_count').value) || 0;
+  return {
+    room_type:               document.getElementById('room_type').value,
+    listing_type:            document.getElementById('listing_type').value,
+    cancellation_policy:     document.getElementById('cancellation_policy').value,
+    region:                  document.getElementById('region').value,
+    country:                 document.getElementById('country').value,
+    city:                    document.getElementById('city').value,
+    bedrooms:                parseFloat(document.getElementById('bedrooms').value) || 1,
+    beds:                    parseFloat(document.getElementById('beds').value) || 1,
+    baths:                   parseFloat(document.getElementById('baths').value) || 1,
+    guests:                  parseFloat(document.getElementById('guests').value) || 2,
+    min_nights:              parseInt(document.getElementById('min_nights').value) || 1,
+    photos_count:            parseInt(document.getElementById('photos_count').value) || 0,
+    cleaning_fee:            parseFloat(document.getElementById('cleaning_fee').value) || 0,
+    extra_guest_fee:         parseFloat(document.getElementById('extra_guest_fee').value) || 0,
+    rating_overall:          parseFloat(document.getElementById('rating_overall').value) || 4.5,
+    rating_cleanliness:      parseFloat(document.getElementById('rating_cleanliness').value) || 4.5,
+    rating_location:         parseFloat(document.getElementById('rating_location').value) || 4.5,
+    rating_value:            parseFloat(document.getElementById('rating_value').value) || 4.5,
+    rating_accuracy:         parseFloat(document.getElementById('rating_accuracy').value) || 4.5,
+    rating_checkin:          parseFloat(document.getElementById('rating_checkin').value) || 4.5,
+    rating_communication:    parseFloat(document.getElementById('rating_communication').value) || 4.5,
+    num_reviews:             parseInt(document.getElementById('num_reviews').value) || 0,
+    amenities_raw:           amenitiesRaw,
+    amenities_count:         amenitiesCount,
+    superhost:               document.getElementById('superhost').checked ? 1 : 0,
+    professional_management: document.getElementById('professional_management').checked ? 1 : 0,
+  };
+}
+
+function fillForm(data) {
+  ['room_type','listing_type','cancellation_policy','region','country','city','bedrooms','beds',
+   'baths','guests','min_nights','photos_count','cleaning_fee','extra_guest_fee','rating_overall',
+   'rating_cleanliness','rating_location','rating_value','rating_accuracy','rating_checkin',
+   'rating_communication','num_reviews','amenities_count'].forEach(f => {
+    const el = document.getElementById(f);
+    if (el && data[f] != null && String(data[f]).trim() !== '') el.value = data[f];
+  });
+  ['superhost','professional_management'].forEach(f => {
+    const el = document.getElementById(f);
+    if (el && data[f] != null) el.checked = !!data[f];
+  });
+}
+
+async function scrapeUrl() {
+  const url = document.getElementById('url').value.trim();
+  if (!url) return;
+  const msg = document.getElementById('scrape-msg');
+  msg.textContent = 'Fetching...';
+  try {
+    const res = await fetch(API_BASE + '/scrape', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (data.error) { msg.textContent = data.error; }
+    else { fillForm(data); msg.textContent = 'Done — verify fields before estimating.'; }
+  } catch(e) {
+    msg.textContent = 'Failed: ' + e.message;
+  }
+}
+
+async function predict() {
+  const resultEl = document.getElementById('result');
+  const errorEl = document.getElementById('error');
+  resultEl.textContent = 'Computing...';
+  errorEl.textContent = '';
+  try {
+    const res = await fetch(API_BASE + '/predict', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(getInputs())
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+    resultEl.textContent = 'Estimated TTM revenue: ' + fmt.format(data.amount);
+  } catch(e) {
+    resultEl.textContent = '';
+    errorEl.textContent = e.message;
+  }
+}
+</script>
+</body>
+</html>
