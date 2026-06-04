@@ -33,10 +33,10 @@
   <select id="listing_type"><option>House</option><option>Apartment</option><option>Condo</option><option>Townhouse</option><option>Loft</option><option>Villa</option><option>Cabin</option><option>Studio</option><option>Other</option></select></div>
 <div class="row"><label>Cancellation policy</label>
   <select id="cancellation_policy"><option>Flexible</option><option>Moderate</option><option>Strict</option><option>Super Strict</option></select></div>
+<div class="row"><label>City</label><input type="text" id="city" value="New York"></div>
+<div class="row"><label>Country</label><input type="text" id="country" value="United States"></div>
 <div class="row"><label>Region</label>
   <select id="region"><option>North America</option><option>Europe</option><option>Asia-Pacific</option><option>Latin America/Caribbean</option></select></div>
-<div class="row"><label>Country</label><input type="text" id="country" value="United States"></div>
-<div class="row"><label>City</label><input type="text" id="city" value="New York"></div>
 <div class="row"><label>Bedrooms</label><input type="number" id="bedrooms" value="2" min="1"></div>
 <div class="row"><label>Beds</label><input type="number" id="beds" value="2" min="1"></div>
 <div class="row"><label>Bathrooms</label><input type="number" id="baths" value="1" min="0.5" step="0.5"></div>
@@ -77,9 +77,9 @@ function getInputs() {
     room_type:               document.getElementById('room_type').value,
     listing_type:            document.getElementById('listing_type').value,
     cancellation_policy:     document.getElementById('cancellation_policy').value,
-    region:                  document.getElementById('region').value,
-    country:                 document.getElementById('country').value,
     city:                    document.getElementById('city').value,
+    country:                 document.getElementById('country').value,
+    region:                  document.getElementById('region').value,
     bedrooms:                parseFloat(document.getElementById('bedrooms').value) || 1,
     beds:                    parseFloat(document.getElementById('beds').value) || 1,
     baths:                   parseFloat(document.getElementById('baths').value) || 1,
