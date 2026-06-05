@@ -128,8 +128,9 @@ async function scrapeUrl() {
       body: JSON.stringify({ url })
     });
     const data = await res.json();
+    console.log(data);
     if (data.error) { msg.textContent = data.error; }
-    else { fillForm(data); msg.textContent = 'Done — verify fields before estimating.'; }
+    else { fillForm(data); msg.textContent = 'Done!'; }
   } catch(e) {
     msg.textContent = 'Failed: ' + e.message;
   }
@@ -146,7 +147,7 @@ async function predict() {
       body: JSON.stringify(getInputs())
     });
     const data = await res.json();
-    console.log(data);
+
     if (data.error) throw new Error(data.error);
     const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
     resultEl.textContent = 'Estimated TTM revenue: ' + fmt.format(data.amount);
