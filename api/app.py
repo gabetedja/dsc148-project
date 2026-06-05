@@ -17,20 +17,18 @@ def build_dataframe(data):
     """
     Replicates all feature engineering from the notebook before prediction.
     """
-    # ── core fields ──────────────────────────────────────────────
+
     bedrooms = max(float(data.get('bedrooms', 1) or 1), 1)
     guests   = float(data.get('guests', 2) or 2)
     beds     = float(data.get('beds', bedrooms) or bedrooms)
     baths    = float(data.get('baths', 1) or 1)
 
-    # ── amenities: accept either a count (int) or raw comma-separated string ──
     amenities_raw = str(data.get('amenities_raw', '') or '')
     amenities_count = int(data.get('amenities_count', 0) or 0)
     if amenities_raw:
         amenities_count = len([a for a in amenities_raw.split(',') if a.strip()])
     amenities_lower = amenities_raw.lower()
 
-    # ── amenity flags ─────────────────────────────────────────────
     def has(terms):
         return int(any(t in amenities_lower for t in terms))
 
@@ -48,7 +46,6 @@ def build_dataframe(data):
     has_gym             = has(['gym', 'exercise equipment'])
     has_elevator        = has(['elevator'])
 
-    # ── engineered ratios ─────────────────────────────────────────
     guests_per_bedroom = guests / bedrooms
     beds_per_bedroom   = beds / bedrooms
     baths_per_guest    = baths / max(guests, 1)
@@ -110,7 +107,7 @@ def build_dataframe(data):
         'ratings_x_log_reviews':   ratings_x_log_reviews,
     }
 
-    # Column order must exactly match features list from notebook
+    # from nb
     feature_order = [
         "listing_type", "room_type", "photos_count", "superhost", "latitude", "longitude", "guests",
         "bedrooms", "beds", "baths", "amenities_count", "has_pool", "has_hot_tub", "has_parking",

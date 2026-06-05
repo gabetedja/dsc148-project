@@ -138,7 +138,7 @@ async function scrapeUrl() {
 async function predict() {
   const resultEl = document.getElementById('result');
   const errorEl = document.getElementById('error');
-  resultEl.textContent = 'Computing...';
+  resultEl.textContent = 'Computing... (Please allow time for the instance to boot up)';
   errorEl.textContent = '';
   try {
     const res = await fetch(API_BASE + '/predict', {
@@ -146,6 +146,7 @@ async function predict() {
       body: JSON.stringify(getInputs())
     });
     const data = await res.json();
+    console.log(data);
     if (data.error) throw new Error(data.error);
     const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
     resultEl.textContent = 'Estimated TTM revenue: ' + fmt.format(data.amount);
