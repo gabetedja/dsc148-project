@@ -142,68 +142,162 @@ def scrape():
         return jsonify({'error': 'Not a valid Airbnb listing URL'})
 
     listing_id = match.group(1)
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
-        'Accept-Language': 'en-US,en;q=0.9',
-    }
 
     try:
-        resp = requests.get(f'https://www.airbnb.com/rooms/{listing_id}',
-                            headers=headers, timeout=10)
+        resp = requests.get(f'https://www.airbnb.com/rooms/{listing_id}', timeout=15)
         soup = BeautifulSoup(resp.text, 'html.parser')
 
-        data = {}
-        for s in soup.find_all('script'):
-            if s.string and 'homePDP' in (s.string or ''):
-                import json
-                json_match = re.search(r'\{.*\}', s.string, re.DOTALL)
-                if json_match:
-                    try:
-                        raw = json.loads(json_match.group(0))
-                        sections = (raw
-                            .get('niobeMinimalClientData', [[]])[0][1]
-                            .get('data', {})
-                            .get('presentation', {})
-                            .get('stayProductDetailPage', {})
-                            .get('sections', {})
-                            .get('metadata', {})
-                            .get('loggingContext', {})
-                            .get('eventDataLogging', {}))
-                        data['bedrooms']       = sections.get('numBedrooms', '')
-                        data['baths']          = sections.get('numBathrooms', '')
-                        data['guests']         = sections.get('personCapacity', '')
-                        data['city']           = sections.get('city', '')
-                        data['country']        = sections.get('country', '')
-                        data['rating_overall'] = sections.get('avgRating', '')
-                        data['num_reviews']    = sections.get('reviewCount', '')
-                    except Exception:
-                        pass
-                break
+        ld = {}
+        for tag in soup.find_all('script', type='application/ld+json'):
+            try:
+                obj = json.loads(tag.string or '')
+                if obj.get('@type') == 'VacationRental':
+                    ld = obj
+                    break
+            except Exception:
+                pass
+
+        rating_overall  = ld.get('aggregateRating', {}).get('ratingValue', '')
+        num_reviews     = ld.get('aggregateRating', {}).get('ratingCount', '')
+        latitude        = ld.get('latitude', '')
+        longitude       = ld.get('longitude', '')
+        city            = ld.get('address', {}).get('addressLocality', '')
+        guests_ld       = ld.get('containsPlace', {}).get('occupancy', {}).get('value', '')
+        photos_count    = len(ld.get('image', []))
+
+        bedrooms = beds = baths = guests = ''
+        overview_el = soup.find('ol', class_=lambda c: c and 'lgx66tx' in c)
+        if overview_el:
+            items = [li.get_text(strip=True) for li in overview_el.find_all('li')]
+            for item in items:
+                item_lower = item.lower()
+                m = re.search(r'(\d+)\s+guest', item_lower)
+                if m: guests = m.group(1)
+                m = re.search(r'(\d+)\s+bedroom', item_lower)
+                if m: bedrooms = m.group(1)
+                m = re.search(r'(\d+)\s+bed', item_lower)
+                if m: beds = m.group(1)
+                m = re.search(r'([\d.]+)\s+bath', item_lower)
+                if m: baths = m.group(1)
+
+        # Fall back to JSON-LD guests if not found in overview
+        if not guests and guests_ld:
+            guests = guests_ld
+
+        room_type = ''
+        listing_type = ''
+        h2_overview = soup.find('h2', string=re.compile(r'Entire|Private room|Shared room|Hotel', re.I))
+        if h2_overview:
+            text = h2_overview.get_text(strip=True).lower()
+            if 'entire' in text:
+                room_type = 'Entire home/apt'
+            elif 'private room' in text:
+                room_type = 'Private room'
+            elif 'shared room' in text:
+                room_type = 'Shared room'
+            elif 'hotel' in text:
+                room_type = 'Hotel room'
+
+            # listing type from same heading 
+            type_match = re.search(r'entire\s+(\w+)', text)
+            if type_match:
+                raw = type_match.group(1).lower()
+                type_map = {
+                    'house': 'House', 'apartment': 'Apartment', 'condo': 'Condo',
+                    'loft': 'Loft', 'villa': 'Villa', 'cabin': 'Cabin',
+                    'studio': 'Studio', 'guesthouse': 'Other', 'townhouse': 'Townhouse',
+                }
+                listing_type = type_map.get(raw, 'Other')
+
+        country = state = ''
+        location_el = soup.find(class_=lambda c: c and 's1u3608j' in (c or ''))
+        if location_el:
+            loc_text = location_el.get_text(strip=True)  
+            parts = [p.strip() for p in loc_text.split(',')]
+            if len(parts) >= 3:
+                city = city or parts[0]
+                state = parts[1]
+                country = parts[2]
+            elif len(parts) == 2:
+                city = city or parts[0]
+                country = parts[1]
+
+        #amenities stuff
+        amenities_raw = ''
+        amenity_items = []
+        amenities_section = soup.find(attrs={'data-section-id': 'AMENITIES_DEFAULT'})
+        if amenities_section:
+            for div in amenities_section.find_all('div', class_=lambda c: c and 'i3qbefn' in (c or '')):
+                text = div.get_text(separator=' ', strip=True)
+                # strip out icon text / duplication
+                clean = re.sub(r'\s+', ' ', text).strip()
+                if clean and len(clean) < 60:
+                    amenity_items.append(clean)
+
+        # Also grab count from "Show all N amenities" button
+        amenities_count = len(amenity_items)
+        btn_text = soup.find(string=re.compile(r'Show all \d+ amenities'))
+        if btn_text:
+            m = re.search(r'(\d+)', btn_text)
+            if m:
+                amenities_count = int(m.group(1))
+
+        amenities_raw = ', '.join(amenity_items) if amenity_items else ''
+
+        def extract_subrating(label):
+            heading = soup.find(string=re.compile(
+                rf'Rated ([\d.]+) out of 5 stars for {label}', re.I))
+            if heading:
+                m = re.search(r'Rated ([\d.]+)', heading, re.I)
+                if m: return m.group(1)
+            return ''
+
+        rating_cleanliness   = extract_subrating('cleanliness')
+        rating_accuracy      = extract_subrating('accuracy')
+        rating_checkin       = extract_subrating('check-in')
+        rating_communication = extract_subrating('communication')
+        rating_location_r    = extract_subrating('location')
+        rating_value         = extract_subrating('value')
+
+        superhost = bool(soup.find(string=re.compile(r'Superhost', re.I)))
+
+        region_map = {
+            'United States': 'North America', 'Canada': 'North America', 'Mexico': 'North America',
+            'United Kingdom': 'Europe', 'France': 'Europe', 'Germany': 'Europe',
+            'Italy': 'Europe', 'Spain': 'Europe', 'Portugal': 'Europe',
+            'Japan': 'Asia-Pacific', 'Australia': 'Asia-Pacific', 'Thailand': 'Asia-Pacific',
+            'Brazil': 'Latin America/Caribbean', 'Colombia': 'Latin America/Caribbean',
+        }
+        region = region_map.get(country.strip(), '')
 
         return jsonify({
-            'room_type':               data.get('room_type', ''),
-            'listing_type':            data.get('listing_type', ''),
-            'cancellation_policy':     data.get('cancellation_policy', ''),
-            'bedrooms':                data.get('bedrooms', ''),
-            'beds':                    data.get('beds', ''),
-            'baths':                   data.get('baths', ''),
-            'guests':                  data.get('guests', ''),
-            'region':                  data.get('region', ''),
-            'country':                 data.get('country', ''),
-            'city':                    data.get('city', ''),
-            'rating_overall':          data.get('rating_overall', ''),
-            'rating_cleanliness':      data.get('rating_cleanliness', ''),
-            'rating_location':         data.get('rating_location', ''),
-            'rating_value':            data.get('rating_value', ''),
-            'num_reviews':             data.get('num_reviews', ''),
-            'photos_count':            data.get('photos_count', ''),
-            'cleaning_fee':            data.get('cleaning_fee', ''),
-            'extra_guest_fee':         data.get('extra_guest_fee', ''),
-            'min_nights':              data.get('min_nights', ''),
-            'amenities_count':         data.get('amenities_count', ''),
-            'superhost':               data.get('superhost', False),
-            'instant_book':            data.get('instant_book', False),
-            'professional_management': data.get('professional_management', False),
+            'room_type':               room_type,
+            'listing_type':            listing_type,
+            'cancellation_policy':     '',
+            'bedrooms':                bedrooms,
+            'beds':                    beds,
+            'baths':                   baths,
+            'guests':                  guests,
+            'region':                  region,
+            'country':                 country,
+            'state':                   state,
+            'city':                    city,
+            'latitude':                latitude,
+            'longitude':               longitude,
+            'rating_overall':          rating_overall,
+            'rating_cleanliness':      rating_cleanliness,
+            'rating_accuracy':         rating_accuracy,
+            'rating_checkin':          rating_checkin,
+            'rating_communication':    rating_communication,
+            'rating_location':         rating_location_r,
+            'rating_value':            rating_value,
+            'num_reviews':             num_reviews,
+            'photos_count':            photos_count,
+            'amenities_count':         amenities_count,
+            'amenities_raw':           amenities_raw,
+            'superhost':               superhost,
+            'instant_book':            False,
+            'professional_management': False,
         })
 
     except requests.exceptions.Timeout:
