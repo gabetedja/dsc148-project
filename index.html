@@ -132,14 +132,14 @@ async function scrapeUrl() {
     if (data.error) { msg.textContent = data.error; }
     else { fillForm(data); msg.textContent = 'Done! (Note that not all input data is available from a listing website or hard to scrape)'; }
   } catch(e) {
-    msg.textContent = 'Failed: ' + e.message;
+    msg.textContent = e.message + ' (site offline!)';
   }
 }
 
 async function predict() {
   const resultEl = document.getElementById('result');
   const errorEl = document.getElementById('error');
-  resultEl.textContent = 'Computing... (Please allow time for the instance to boot up)';
+  resultEl.textContent = 'Computing...';
   errorEl.textContent = '';
   try {
     const res = await fetch(API_BASE + '/predict', {
@@ -153,7 +153,7 @@ async function predict() {
     resultEl.textContent = 'Estimated TTM revenue: ' + fmt.format(data.amount);
   } catch(e) {
     resultEl.textContent = '';
-    errorEl.textContent = e.message;
+    errorEl.textContent = e.message + ' (site offline!)';
   }
 }
 </script>
